@@ -3,6 +3,8 @@ import pandas as pd
 import numpy as np
 import os
 import joblib
+import urllib.request
+
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import r2_score
@@ -10,12 +12,16 @@ from tensorflow.keras.models import Sequential, load_model
 from tensorflow.keras.layers import Dense
 from tensorflow.keras.callbacks import EarlyStopping
 
-MODEL_PATH = 'model.h5'
+MODEL_PATH = 'model.keras'
 SCALER_PATH = 'scaler.pkl'
 DATA_PATH = 'housing.csv'
+DATA_URL = 'https://raw.githubusercontent.com/ageron/handson-ml/master/datasets/housing/housing.csv'
 
 @st.cache_data
 def load_data():
+    if not os.path.exists(DATA_PATH):
+        st.info("Downloading California housing dataset...")
+        urllib.request.urlretrieve(DATA_URL, DATA_PATH)
     df = pd.read_csv(DATA_PATH)
     df['ocean_proximity'] = df['ocean_proximity'].astype('category').cat.codes
     df = df.dropna()
