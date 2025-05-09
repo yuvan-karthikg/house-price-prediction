@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit as st
 import pandas as pd
 import numpy as np
 import os
@@ -15,41 +16,23 @@ MODEL_PATH = 'model.keras'
 SCALER_PATH = 'scaler.pkl'
 DATA_PATH = 'new_housing.csv'
 
-def get_features(df):
-    # Feature engineering for 'date'
-    if 'date' in df.columns:
-        df['date'] = pd.to_datetime(df['date'], errors='coerce')
-        df['year'] = df['date'].dt.year
-        df['month'] = df['date'].dt.month
-        features = ['bedrooms', 'bathrooms', 'sqft_living', 'sqft_lot',
-                    'floors', 'waterfront', 'view', 'condition', 'year', 'month']
-    else:
-        features = ['bedrooms', 'bathrooms', 'sqft_living', 'sqft_lot',
-                    'floors', 'waterfront', 'view', 'condition']
-    return features
-
 @st.cache_data
 def load_data():
     if not os.path.exists(DATA_PATH):
         st.error("Dataset 'new_housing.csv' not found. Please upload it to your repo.")
         st.stop()
     df = pd.read_csv(DATA_PATH)
-    st.write("Columns in your dataset:", df.columns.tolist())  # For debugging
+    # Convert date to datetime if present
+    if 'date' in df.columns:
+        df['date'] = pd.to_datetime(df['date'], errors='coerce')
+        df = df.dropna(subset=['date'])
+    # Drop rows with missing values for features
+    features = ['bedrooms', 'bathrooms', 'sqft_living', 'sqft_lot', 'floors', 'waterfront', 'view', 'condition', 'price']
+    df = df.dropna(subset=features)
+    return df
 
-    # Check required columns
-    required = ['price', 'bedrooms', 'bathrooms', 'sqft_living', 'sqft_lot',
-                'floors', 'waterfront', 'view', 'condition']
-    missing = [col for col in required if col not in df.columns]
-    if missing:
-        st.error(f"Missing columns in your data: {missing}")
-        st.stop()
-
-    features = get_features(df)
-    # Remove rows with missing values in features or price
-    df = df.dropna(subset=features + ['price'])
-    return df, features
-
-def train_and_save_model(df, features):
+def train_and_save_model(df):
+    features = ['bedrooms', 'bathrooms', 'sqft_living', 'sqft_lot', 'floors', 'waterfront', 'view', 'condition']
     X = df[features]
     y = df['price']
 
@@ -59,14 +42,13 @@ def train_and_save_model(df, features):
     X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42)
 
     model = Sequential([
-        Dense(128, input_dim=X_train.shape[1], activation='relu'),
-        Dense(64, activation='relu'),
-        Dense(32, activation='relu'),
+        Dense(32, input_dim=X_train.shape[1], activation='relu'),
+        Dense(16, activation='relu'),
         Dense(1)
     ])
     model.compile(optimizer='adam', loss='mse')
-    early_stop = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
-    model.fit(X_train, y_train, validation_split=0.2, epochs=100, batch_size=32, callbacks=[early_stop], verbose=0)
+    early_stop = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
+    model.fit(X_train, y_train, validation_split=0.2, epochs=50, batch_size=32, callbacks=[early_stop], verbose=0)
 
     y_pred = model.predict(X_test).flatten()
     r2 = r2_score(y_test, y_pred)
@@ -74,6 +56,7 @@ def train_and_save_model(df, features):
 
     model.save(MODEL_PATH)
     joblib.dump(scaler, SCALER_PATH)
+
     return model, scaler
 
 def load_model_and_scaler():
@@ -82,20 +65,16 @@ def load_model_and_scaler():
     return model, scaler
 
 def main():
-    st.title("Improved House Price Prediction (ANN)")
+    st.title("House Price Prediction (ANN) - Custom Dataset")
 
     if not os.path.exists(MODEL_PATH) or not os.path.exists(SCALER_PATH):
         st.info("Training model, please wait...")
-        df, features = load_data()
-        model, scaler = train_and_save_model(df, features)
+        df = load_data()
+        model, scaler = train_and_save_model(df)
     else:
-        # To avoid code repetition, load data for feature list
-        df, features = load_data()
         model, scaler = load_model_and_scaler()
 
     st.header("Enter house details:")
-
-    # Input fields
     bedrooms = st.number_input('Bedrooms', min_value=0, value=3)
     bathrooms = st.number_input('Bathrooms', min_value=0.0, value=2.0, format="%.1f")
     sqft_living = st.number_input('Sqft Living', min_value=0, value=1500)
@@ -104,17 +83,9 @@ def main():
     waterfront = st.selectbox('Waterfront', options=[0, 1])
     view = st.number_input('View', min_value=0, max_value=4, value=0)
     condition = st.number_input('Condition', min_value=1, max_value=5, value=3)
-    # If using date features, ask for year/month
-    use_date = 'year' in features and 'month' in features
-    if use_date:
-        year = st.number_input('Year (from date)', min_value=1900, max_value=2100, value=2014)
-        month = st.number_input('Month (from date)', min_value=1, max_value=12, value=6)
 
     if st.button('Predict'):
-        input_data = [bedrooms, bathrooms, sqft_living, sqft_lot, floors, waterfront, view, condition]
-        if use_date:
-            input_data += [year, month]
-        input_data = np.array([input_data])
+        input_data = np.array([[bedrooms, bathrooms, sqft_living, sqft_lot, floors, waterfront, view, condition]])
         input_scaled = scaler.transform(input_data)
         prediction = model.predict(input_scaled)
         st.success(f"Estimated House Price: ${prediction[0][0]:,.2f}")
