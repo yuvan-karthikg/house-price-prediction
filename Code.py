@@ -11,6 +11,7 @@ uploaded_file = st.file_uploader("Upload your CSV file", type=["csv"])
 if uploaded_file is not None:
     # Read CSV
     df = pd.read_csv(uploaded_file)
+    df.columns = df.columns.str.strip()  # Remove leading/trailing spaces in headers
     st.subheader("Preview of Uploaded Data")
     st.write(df.head())
 
@@ -61,30 +62,38 @@ if uploaded_file is not None:
     st.header("Predict the Price of a House")
 
     def user_input_features():
-        bedrooms = st.number_input('Bedrooms', min_value=0, max_value=20, value=3)
-        bathrooms = st.number_input('Bathrooms', min_value=0.0, max_value=10.0, step=0.25, value=2.0)
-        sqft_living = st.number_input('Sqft Living', min_value=100, max_value=20000, value=2000)
-        sqft_lot = st.number_input('Sqft Lot', min_value=100, max_value=1000000, value=5000)
-        floors = st.number_input('Floors', min_value=1.0, max_value=4.0, step=0.5, value=1.0)
-        waterfront = st.selectbox('Waterfront', [0, 1], format_func=lambda x: 'Yes' if x == 1 else 'No')
-        view = st.slider('View', 0, 4, 0)
-        condition = st.slider('Condition', 1, 5, 3)
-        data = {
-            'bedrooms': bedrooms,
-            'bathrooms': bathrooms,
-            'sqft_living': sqft_living,
-            'sqft_lot': sqft_lot,
-            'floors': floors,
-            'waterfront': waterfront,
-            'view': view,
-            'condition': condition
-        }
-        features = pd.DataFrame(data, index=[0])
+        # Use the columns from X to dynamically generate the input fields
+        input_data = {}
+        for col in X.columns:
+            if col.lower() == 'bedrooms':
+                input_data[col] = st.number_input('Bedrooms', min_value=0, max_value=20, value=3)
+            elif col.lower() == 'bathrooms':
+                input_data[col] = st.number_input('Bathrooms', min_value=0.0, max_value=10.0, step=0.25, value=2.0)
+            elif col.lower() == 'sqft_living':
+                input_data[col] = st.number_input('Sqft Living', min_value=100, max_value=20000, value=2000)
+            elif col.lower() == 'sqft_lot':
+                input_data[col] = st.number_input('Sqft Lot', min_value=100, max_value=1000000, value=5000)
+            elif col.lower() == 'floors':
+                input_data[col] = st.number_input('Floors', min_value=1.0, max_value=4.0, step=0.5, value=1.0)
+            elif col.lower() == 'waterfront':
+                input_data[col] = st.selectbox('Waterfront', [0, 1], format_func=lambda x: 'Yes' if x == 1 else 'No')
+            elif col.lower() == 'view':
+                input_data[col] = st.slider('View', 0, 4, 0)
+            elif col.lower() == 'condition':
+                input_data[col] = st.slider('Condition', 1, 5, 3)
+            else:
+                # For any other columns, default to a number input
+                input_data[col] = st.number_input(col, value=0.0)
+        features = pd.DataFrame(input_data, index=[0])
         return features
 
     input_df = user_input_features()
 
-    # Ensure input features match training columns and order
+    # Add missing columns if any (shouldn't happen, but for robustness)
+    for col in X.columns:
+        if col not in input_df.columns:
+            input_df[col] = 0
+    # Ensure column order matches
     input_df = input_df[X.columns.tolist()]
     input_scaled = scaler.transform(input_df)
 
@@ -102,4 +111,5 @@ if uploaded_file is not None:
 
 else:
     st.info("Please upload a CSV file to use the app.")
+
 
