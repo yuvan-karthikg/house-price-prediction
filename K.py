@@ -3,14 +3,13 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, BatchNormalization, Dropout
 from tensorflow.keras.callbacks import EarlyStopping
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 
-# 1. Load Data
-df = pd.read_csv('house_prices.csv')  # Replace with your actual file name
+# 1. Use the DataFrame already loaded in your notebook (replace 'df' if your variable is different)
+# df = ... # Already loaded in your notebook
 
 # 2. Drop unnecessary columns
 df = df.drop(['date', 'street', 'country'], axis=1)
@@ -100,4 +99,5 @@ new_data = pd.DataFrame([{
 new_data_prep = preprocessor.transform(new_data)
 predicted_price = model.predict(new_data_prep)
 print(f"Predicted price: {predicted_price[0][0]:.2f}")
+
 
