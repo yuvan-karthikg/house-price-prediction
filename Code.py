@@ -7,10 +7,9 @@ from tensorflow import keras
 
 st.title("House Price Prediction using Neural Networks")
 
-# 1. File Uploader
 uploaded_file = st.file_uploader("Upload your CSV file", type=["csv"])
 if uploaded_file is not None:
-    # Read the uploaded file directly (no filename needed)
+    # Read CSV
     df = pd.read_csv(uploaded_file)
     st.subheader("Preview of Uploaded Data")
     st.write(df.head())
@@ -27,19 +26,25 @@ if uploaded_file is not None:
         st.error("The uploaded file must contain a 'price' column as the target variable.")
         st.stop()
 
-    # Feature/Target Split
+    # Feature/Target split
     X = df.drop('price', axis=1)
     y = df['price']
 
-    # Train/Test Split and Scaling
+    # Ensure all features are numeric
+    X = X.apply(pd.to_numeric, errors='coerce')
+    X = X.fillna(X.median(numeric_only=True))
+
+    # Train/test split
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42
     )
+
+    # Scaling
     scaler = StandardScaler()
     X_train_scaled = scaler.fit_transform(X_train)
     X_test_scaled = scaler.transform(X_test)
 
-    # Build and Train Neural Network
+    # Model definition and training
     @st.cache_resource
     def train_model(X_train_scaled, y_train):
         model = keras.Sequential([
@@ -53,7 +58,6 @@ if uploaded_file is not None:
 
     model = train_model(X_train_scaled, y_train)
 
-    # Streamlit UI for Prediction
     st.header("Predict the Price of a House")
 
     def user_input_features():
@@ -79,13 +83,15 @@ if uploaded_file is not None:
         return features
 
     input_df = user_input_features()
+
+    # Ensure input features match training columns and order
+    input_df = input_df[X.columns.tolist()]
     input_scaled = scaler.transform(input_df)
 
     if st.button('Predict Price'):
         prediction = model.predict(input_scaled)
         st.success(f"Estimated House Price: ${prediction[0][0]:,.2f}")
 
-    # Model Performance
     if st.checkbox('Show Model Performance on Test Data'):
         test_preds = model.predict(X_test_scaled)
         from sklearn.metrics import mean_absolute_error, r2_score
