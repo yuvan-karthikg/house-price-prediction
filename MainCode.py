@@ -29,9 +29,11 @@ numerical = ['area', 'bedrooms', 'bathrooms', 'stories', 'parking']
 
 # Encode categorical features
 df_encoded = df.copy()
+label_encoders = {}
 for col in categorical:
     le = LabelEncoder()
     df_encoded[col] = le.fit_transform(df_encoded[col])
+    label_encoders[col] = le
 
 # Split features and target
 X = df_encoded.drop('price', axis=1)
@@ -51,17 +53,35 @@ st.header("Model Training")
 # Build model
 def build_model(input_dim):
     model = tf.keras.Sequential([
-        tf.keras.layers.Dense(64, activation='relu', input_dim=input_dim),
+        tf.keras.layers.Dense(128, activation='relu', input_dim=input_dim),
+        tf.keras.layers.Dense(64, activation='relu'),
         tf.keras.layers.Dense(32, activation='relu'),
         tf.keras.layers.Dense(1)
     ])
-    model.compile(optimizer='adam', loss='mse', metrics=['mae'])
+    model.compile(optimizer='adam', loss='mse', metrics=['mae', 'mse', 'R2']) # Added R2 metric
     return model
 
-model = build_model(X_train_scaled.shape[1])
+# Define a custom R-squared metric for Keras
+def r2_keras(y_true, y_pred):
+    SS_res = tf.reduce_sum(tf.square(y_true - y_pred))
+    SS_tot = tf.reduce_sum(tf.square(y_true - tf.reduce_mean(y_true)))
+    return (1 - SS_res/(SS_tot + tf.keras.backend.epsilon()))
 
-# Train model
-history = model.fit(X_train_scaled, y_train, epochs=100, validation_split=0.1, verbose=0)
+# Rebuild the model with the custom R-squared metric
+def build_improved_model(input_dim):
+    model = tf.keras.Sequential([
+        tf.keras.layers.Dense(128, activation='relu', input_dim=input_dim),
+        tf.keras.layers.Dense(64, activation='relu'),
+        tf.keras.layers.Dense(32, activation='relu'),
+        tf.keras.layers.Dense(1)
+    ])
+    model.compile(optimizer='adam', loss='mse', metrics=['mae', r2_keras])
+    return model
+
+model = build_improved_model(X_train_scaled.shape[1])
+
+# Train model with more epochs and a batch size
+history = model.fit(X_train_scaled, y_train, epochs=200, batch_size=32, validation_split=0.1, verbose=0)
 
 st.success("Model trained successfully!")
 
@@ -75,15 +95,26 @@ r2 = r2_score(y_test, y_pred)
 
 st.write(f"**Mean Squared Error (MSE):** {mse:.2f}")
 st.write(f"**Root Mean Squared Error (RMSE):** {rmse:.2f}")
-st.write(f"**R-squared (R2):** {r2:.2f}")
+st.write(f"**R-squared (R2):** {r2:.3f}") # Display R2 with more precision
+
+# Plot training history
+st.subheader("Training History")
+fig_hist, ax_hist = plt.subplots(figsize=(10, 5))
+ax_hist.plot(history.history['loss'], label='Training Loss')
+ax_hist.plot(history.history['val_loss'], label='Validation Loss')
+ax_hist.set_xlabel('Epoch')
+ax_hist.set_ylabel('Loss (MSE)')
+ax_hist.legend()
+st.pyplot(fig_hist)
 
 # Plot predictions vs actual
-fig, ax = plt.subplots()
-sns.scatterplot(x=y_test, y=y_pred, ax=ax)
-ax.set_xlabel("Actual Price")
-ax.set_ylabel("Predicted Price")
-ax.set_title("Actual vs Predicted Prices")
-st.pyplot(fig)
+st.subheader("Actual vs Predicted Prices")
+fig_scatter, ax_scatter = plt.subplots()
+sns.scatterplot(x=y_test, y=y_pred, ax=ax_scatter)
+ax_scatter.set_xlabel("Actual Price")
+ax_scatter.set_ylabel("Predicted Price")
+ax_scatter.set_title("Actual vs Predicted Prices")
+st.pyplot(fig_scatter)
 
 # --- Prediction Interface ---
 st.header("Predict House Price")
@@ -120,15 +151,13 @@ def user_input_features():
 
 input_df = user_input_features()
 
-# Encode and scale user input
+# Encode and scale user input for prediction
+input_encoded = input_df.copy()
 for col in categorical:
-    le = LabelEncoder()
-    le.fit(df[col])
-    input_df[col] = le.transform(input_df[col])
+    input_encoded[col] = label_encoders[col].transform(input_encoded[col])
 
-input_scaled = scaler.transform(input_df)
+input_scaled = scaler.transform(input_encoded)
 
 if st.button('Predict'):
     prediction = model.predict(input_scaled).flatten()[0]
     st.subheader(f"Estimated House Price: {prediction:,.2f}")
-
