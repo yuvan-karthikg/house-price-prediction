@@ -2,74 +2,88 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
+from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.metrics import mean_absolute_error, r2_score
 import xgboost as xgb
 
-st.title("House Price Prediction using XGBoost (Best Practice)")
+st.title("🏡 House Price Prediction using XGBoost (Optimized)")
 
 uploaded_file = st.file_uploader("Upload your CSV file", type=["csv"])
 if uploaded_file is not None:
     df = pd.read_csv(uploaded_file)
     df.columns = df.columns.str.strip()
-    st.subheader("Preview of Uploaded Data")
+
+    st.subheader("📄 Preview of Uploaded Data")
     st.write(df.head())
 
-    # Drop 'date' if present
-    if 'date' in df.columns:
-        df = df.drop(columns=['date'])
+    # Drop irrelevant columns
+    drop_cols = ['id', 'date', 'zipcode']  # drop more if needed
+    df = df.drop(columns=[col for col in drop_cols if col in df.columns], errors='ignore')
 
-    # Fill missing values: median for numeric, mode for categorical
+    # Feature Engineering: Age of house
+    if 'yr_built' in df.columns:
+        df['house_age'] = 2025 - df['yr_built']
+        df.drop('yr_built', axis=1, inplace=True)
+
+    # Fill missing values
     for col in df.columns:
         if df[col].dtype in ['float64', 'int64']:
             df[col] = df[col].fillna(df[col].median())
         else:
             df[col] = df[col].fillna(df[col].mode()[0])
 
-    # Check for 'price' column
+    # Remove outliers
+    df = df[df['price'] < df['price'].quantile(0.98)]
+
     if 'price' not in df.columns:
         st.error("The uploaded file must contain a 'price' column as the target variable.")
         st.stop()
 
-    # Separate features and target
     X_raw = df.drop('price', axis=1)
-    y = df['price']
+    y_raw = df['price']
 
-    # Identify categorical and numeric columns
+    # Log-transform the target
+    y = np.log1p(y_raw)
+
     categorical_cols = X_raw.select_dtypes(include=['object', 'category']).columns.tolist()
     numeric_cols = X_raw.select_dtypes(include=[np.number]).columns.tolist()
 
-    # One-hot encode categorical features
-    encoder = OneHotEncoder(sparse_output=False, handle_unknown='ignore')
-    if categorical_cols:
-        X_cat = pd.DataFrame(
-            encoder.fit_transform(X_raw[categorical_cols]),
-            columns=encoder.get_feature_names_out(categorical_cols)
-        )
-        X = pd.concat([X_raw[numeric_cols].reset_index(drop=True), X_cat.reset_index(drop=True)], axis=1)
-    else:
-        X = X_raw[numeric_cols]
+    # Preprocessing
+    preprocessor = ColumnTransformer([
+        ('num', StandardScaler(), numeric_cols),
+        ('cat', OneHotEncoder(handle_unknown='ignore', sparse_output=False), categorical_cols)
+    ])
 
-    # Fill again in case encoding introduces NaNs
-    X = X.fillna(0)
+    X_processed = preprocessor.fit_transform(X_raw)
 
-    # Split
+    # Train-test split
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42
+        X_processed, y, test_size=0.2, random_state=42
     )
 
-    # XGBoost Model
     @st.cache_resource
-    def train_model(X_train, y_train):
-        model = xgb.XGBRegressor(n_estimators=500, learning_rate=0.05, max_depth=6, random_state=42)
-        model.fit(X_train, y_train)
+    def train_model(X_train, y_train, X_test, y_test):
+        model = xgb.XGBRegressor(
+            n_estimators=1000,
+            learning_rate=0.05,
+            max_depth=6,
+            random_state=42,
+            objective='reg:squarederror'
+        )
+        model.fit(
+            X_train, y_train,
+            eval_set=[(X_test, y_test)],
+            early_stopping_rounds=20,
+            verbose=False
+        )
         return model
 
-    model = train_model(X_train, y_train)
+    model = train_model(X_train, y_train, X_test, y_test)
 
-    st.header("Predict the Price of a House")
+    st.header("🔍 Predict the Price of a House")
 
-    # User input for all features
+    # User input
     user_input = {}
     for col in numeric_cols:
         min_val = float(df[col].min())
@@ -86,37 +100,26 @@ if uploaded_file is not None:
         else:
             user_input[col] = st.text_input(f"{col}", str(unique_vals[0]))
 
-    # Build input DataFrame
     input_df = pd.DataFrame([user_input])
+    input_processed = preprocessor.transform(input_df)
 
-    # One-hot encode input
-    if categorical_cols:
-        input_cat = pd.DataFrame(
-            encoder.transform(input_df[categorical_cols]),
-            columns=encoder.get_feature_names_out(categorical_cols)
-        )
-        input_num = input_df[numeric_cols].reset_index(drop=True)
-        input_X = pd.concat([input_num, input_cat], axis=1)
-    else:
-        input_X = input_df[numeric_cols]
+    if st.button("💰 Predict Price"):
+        pred_log = model.predict(input_processed)
+        pred_actual = np.expm1(pred_log)  # inverse of log1p
+        st.success(f"Estimated House Price: ${pred_actual[0]:,.2f}")
 
-    # Align columns with training data (add missing columns if any)
-    for col in X.columns:
-        if col not in input_X.columns:
-            input_X[col] = 0
-    input_X = input_X[X.columns.tolist()]
+    if st.checkbox("📊 Show Model Performance on Test Data"):
+        test_preds_log = model.predict(X_test)
+        test_preds = np.expm1(test_preds_log)
+        y_test_actual = np.expm1(y_test)
 
-    if st.button('Predict Price'):
-        prediction = model.predict(input_X)
-        st.success(f"Estimated House Price: ${prediction[0]:,.2f}")
+        mae = mean_absolute_error(y_test_actual, test_preds)
+        r2 = r2_score(y_test_actual, test_preds)
 
-    if st.checkbox('Show Model Performance on Test Data'):
-        test_preds = model.predict(X_test)
-        mae = mean_absolute_error(y_test, test_preds)
-        r2 = r2_score(y_test, test_preds)
         st.write(f"Test MAE: ${mae:,.2f}")
         st.write(f"Test R² Score: {r2:.3f}")
 
 else:
     st.info("Please upload a CSV file to use the app.")
+
 
