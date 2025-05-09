@@ -1,96 +1,76 @@
-import streamlit as st
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, BatchNormalization, Dropout
-from tensorflow.keras.callbacks import EarlyStopping
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Dropout, BatchNormalization
+from tensorflow.keras.callbacks import EarlyStopping
 
-st.title("House Price Prediction with ANN")
+# 1. Load data
+df = pd.read_csv('your_file.csv')
 
-uploaded_file = st.file_uploader("Upload your house price CSV file", type=["csv"])
+# 2. Drop uninformative columns
+df = df.drop(['date', 'street', 'country'], axis=1)
 
-if uploaded_file is not None:
-    df = pd.read_csv(uploaded_file)
-    df = df.drop(['date', 'street', 'country'], axis=1)
+# 3. Handle missing values
+df = df.dropna()  # or use imputation
 
-    X = df.drop('price', axis=1)
-    y = df['price']
+# 4. Feature engineering
+df['age'] = 2025 - df['yr_built']
+df['was_renovated'] = (df['yr_renovated'] > 0).astype(int)
+df = df.drop(['yr_built', 'yr_renovated'], axis=1)
 
-    num_cols = X.select_dtypes(include=['int64', 'float64']).columns.tolist()
-    cat_cols = X.select_dtypes(include=['object']).columns.tolist()
+# 5. Remove outliers (example: remove top/bottom 1% prices)
+df = df[(df['price'] < df['price'].quantile(0.99)) & (df['price'] > df['price'].quantile(0.01))]
 
-    preprocessor = ColumnTransformer([
-        ('num', StandardScaler(), num_cols),
-        ('cat', OneHotEncoder(handle_unknown='ignore'), cat_cols)
-    ])
+# 6. Encode categorical features
+X = df.drop('price', axis=1)
+y = df['price']
 
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-    X_train_prep = preprocessor.fit_transform(X_train)
-    X_test_prep = preprocessor.transform(X_test)
+num_cols = X.select_dtypes(include=['int64', 'float64']).columns.tolist()
+cat_cols = X.select_dtypes(include=['object']).columns.tolist()
 
-    input_dim = X_train_prep.shape[1]
-    model = Sequential([
-        Dense(128, input_dim=input_dim, activation='relu'),
-        BatchNormalization(),
-        Dropout(0.2),
-        Dense(64, activation='relu'),
-        BatchNormalization(),
-        Dropout(0.2),
-        Dense(32, activation='relu'),
-        BatchNormalization(),
-        Dropout(0.2),
-        Dense(16, activation='relu'),
-        BatchNormalization(),
-        Dense(1)
-    ])
-    model.compile(optimizer='adam', loss='mse', metrics=['mae', 'mse'])
+preprocessor = ColumnTransformer([
+    ('num', StandardScaler(), num_cols),
+    ('cat', OneHotEncoder(handle_unknown='ignore', sparse=False), cat_cols)
+])
 
-    early_stopping = EarlyStopping(
-        monitor='val_mse',
-        patience=40,
-        restore_best_weights=True,
-        verbose=1
-    )
+X_prep = preprocessor.fit_transform(X)
 
-    with st.spinner("Training model..."):
-        history = model.fit(
-            X_train_prep, y_train,
-            validation_split=0.2,
-            epochs=100,
-            batch_size=32,
-            callbacks=[early_stopping],
-            verbose=0
-        )
+# 7. Train-test split
+X_train, X_test, y_train, y_test = train_test_split(X_prep, y, test_size=0.2, random_state=42)
 
-    y_pred = model.predict(X_test_prep)
-    mae = mean_absolute_error(y_test, y_pred)
-    mse = mean_squared_error(y_test, y_pred)
-    rmse = np.sqrt(mse)
-    r2 = r2_score(y_test, y_pred)
+# 8. Model
+model = Sequential([
+    Dense(128, activation='relu', input_shape=(X_train.shape[1],)),
+    BatchNormalization(),
+    Dropout(0.3),
+    Dense(64, activation='relu'),
+    BatchNormalization(),
+    Dropout(0.3),
+    Dense(32, activation='relu'),
+    BatchNormalization(),
+    Dense(1)
+])
+model.compile(optimizer='adam', loss='mse', metrics=['mae', 'mse'])
 
-    st.subheader("Model Performance on Test Set")
-    st.write(f"**MAE:** {mae:.2f}")
-    st.write(f"**RMSE:** {rmse:.2f}")
-    st.write(f"**R² Score:** {r2:.4f}")
+early_stopping = EarlyStopping(monitor='val_loss', patience=20, restore_best_weights=True)
+history = model.fit(X_train, y_train, validation_split=0.2, epochs=200, batch_size=32, callbacks=[early_stopping], verbose=1)
 
-    st.subheader("Predict Price for a New House")
+# 9. Evaluation
+y_pred = model.predict(X_test).flatten()
+mae = mean_absolute_error(y_test, y_pred)
+rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+r2 = r2_score(y_test, y_pred)
+print(f"MAE: {mae:.2f}, RMSE: {rmse:.2f}, R2: {r2:.4f}")
 
-    # User inputs for all features
-    user_input = {}
-    for col in num_cols:
-        user_input[col] = st.number_input(f"{col}", value=float(X[col].mean()))
-    for col in cat_cols:
-        user_input[col] = st.text_input(f"{col}", value=str(X[col].iloc[0]))
-
-    if st.button("Predict"):
-        input_df = pd.DataFrame([user_input])
-        input_prep = preprocessor.transform(input_df)
-        pred_price = model.predict(input_prep)
-        st.success(f"Predicted price: ${pred_price[0][0]:,.2f}")
-
-else:
-    st.warning("Please upload a CSV file to proceed.")
+# 10. Plot actual vs predicted
+import matplotlib.pyplot as plt
+plt.scatter(y_test, y_pred, alpha=0.3)
+plt.xlabel('Actual Price')
+plt.ylabel('Predicted Price')
+plt.title('Actual vs Predicted Prices')
+plt.plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], color='red')
+plt.show()
