@@ -12,7 +12,7 @@ import seaborn as sns
 @st.cache_data
 def load_data():
     # Replace with your dataset path
-    df = pd.read_csv('house_data.csv')
+    df = pd.read_csv('housing_3.csv')
     return df
 
 df = load_data()
