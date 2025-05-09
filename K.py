@@ -1,89 +1,103 @@
-import streamlit as st
 import pandas as pd
 import numpy as np
-import tensorflow as tf
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, Dropout, BatchNormalization
-from tensorflow.keras.callbacks import EarlyStopping
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import MinMaxScaler, OneHotEncoder
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
-from sklearn.metrics import mean_squared_error, mean_absolute_error
+from sklearn.pipeline import Pipeline
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, BatchNormalization, Dropout
+from tensorflow.keras.callbacks import EarlyStopping
+from sklearn.metrics import mean_absolute_error, mean_squared_error
 
-# Streamlit UI
-st.title("🏠 House Price Prediction using ANN")
-st.write("Upload your dataset with the following columns: date, price, bedrooms, bathrooms, sqft_living, sqft_lot, floors, waterfront, view, condition, sqft_above, sqft_basement, yr_built, yr_renovated, street, city, statezip, country")
+# 1. Load Data
+df = pd.read_csv('house_prices.csv')  # Replace with your actual file name
 
-uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
+# 2. Drop unnecessary columns
+df = df.drop(['date', 'street', 'country'], axis=1)
 
-if uploaded_file is not None:
-    df = pd.read_csv(uploaded_file)
-    st.subheader("Data Preview")
-    st.write(df.head())
+# 3. Separate features and target
+X = df.drop('price', axis=1)
+y = df['price']
 
-    st.subheader("Data Description")
-    st.write(df.describe())
+# 4. Identify numerical and categorical columns
+num_cols = X.select_dtypes(include=['int64', 'float64']).columns.tolist()
+cat_cols = X.select_dtypes(include=['object']).columns.tolist()
 
-    # Drop rows with missing values
-    df = df.dropna()
+# 5. Preprocessing pipeline
+preprocessor = ColumnTransformer([
+    ('num', StandardScaler(), num_cols),
+    ('cat', OneHotEncoder(handle_unknown='ignore'), cat_cols)
+])
 
-    # Extract features and target
-    y = df["price"]
-    X = df.drop(columns=["price", "date", "street", "statezip", "country"], errors='ignore')
+# 6. Train-test split
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-    # Identify categorical and numerical columns
-    cat_cols = X.select_dtypes(include=["object", "category"]).columns.tolist()
-    num_cols = X.select_dtypes(include=[np.number]).columns.tolist()
+# 7. Fit and transform
+X_train_prep = preprocessor.fit_transform(X_train)
+X_test_prep = preprocessor.transform(X_test)
 
-    # Preprocessing pipeline
-    preprocessor = ColumnTransformer([
-        ("num", MinMaxScaler(), num_cols),
-        ("cat", OneHotEncoder(handle_unknown="ignore"), cat_cols)
-    ])
+# 8. Build ANN Model
+input_dim = X_train_prep.shape[1]
+model = Sequential([
+    Dense(128, input_dim=input_dim, activation='relu'),
+    BatchNormalization(),
+    Dropout(0.2),
+    Dense(64, activation='relu'),
+    BatchNormalization(),
+    Dropout(0.2),
+    Dense(32, activation='relu'),
+    BatchNormalization(),
+    Dropout(0.2),
+    Dense(16, activation='relu'),
+    BatchNormalization(),
+    Dense(1)
+])
+model.compile(optimizer='adam', loss='mse', metrics=['mae', 'mse'])
 
-    X_processed = preprocessor.fit_transform(X)
+# 9. Early stopping
+early_stopping = EarlyStopping(
+    monitor='val_mse',
+    patience=40,
+    restore_best_weights=True,
+    verbose=1
+)
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X_processed, y, test_size=0.2, random_state=42
-    )
+# 10. Train the model
+history = model.fit(
+    X_train_prep, y_train,
+    validation_split=0.2,
+    epochs=100,
+    batch_size=32,
+    callbacks=[early_stopping],
+    verbose=1
+)
 
-    # Model
-    st.subheader("Training ANN Model")
-    model = Sequential([
-        Dense(128, activation='relu', input_shape=(X_train.shape[1],)),
-        Dropout(0.3),
-        Dense(64, activation='relu'),
-        Dropout(0.3),
-        Dense(1)
-    ])
+# 11. Evaluate
+y_pred = model.predict(X_test_prep)
+mae = mean_absolute_error(y_test, y_pred)
+mse = mean_squared_error(y_test, y_pred)
+rmse = np.sqrt(mse)
+print(f"Test MAE: {mae:.2f}")
+print(f"Test RMSE: {rmse:.2f}")
 
-    model.compile(optimizer='adam', loss='mse')
+# 12. Predict on new data example
+new_data = pd.DataFrame([{
+    'bedrooms': 3,
+    'bathrooms': 2,
+    'sqft_living': 1800,
+    'sqft_lot': 5000,
+    'floors': 1,
+    'waterfront': 0,
+    'view': 0,
+    'condition': 3,
+    'sqft_above': 1800,
+    'sqft_basement': 0,
+    'yr_built': 1990,
+    'yr_renovated': 0,
+    'city': 'Seattle',
+    'statezip': 'WA 98103'
+}])
+new_data_prep = preprocessor.transform(new_data)
+predicted_price = model.predict(new_data_prep)
+print(f"Predicted price: {predicted_price[0][0]:.2f}")
 
-    early_stop = EarlyStopping(monitor='val_loss', patience=10)
-
-    history = model.fit(
-        X_train, y_train,
-        validation_split=0.2,
-        epochs=100,
-        callbacks=[early_stop],
-        verbose=0
-    )
-
-    st.success("Model trained successfully!")
-
-    # Evaluation
-    st.subheader("Model Evaluation")
-    y_pred = model.predict(X_test).flatten()
-    mse = mean_squared_error(y_test, y_pred)
-    rmse = np.sqrt(mse)
-    mae = mean_absolute_error(y_test, y_pred)
-
-    st.write(f"**Mean Squared Error (MSE):** {mse:.2f}")
-    st.write(f"**Root Mean Squared Error (RMSE):** {rmse:.2f}")
-    st.write(f"**Mean Absolute Error (MAE):** {mae:.2f}")
-
-    if st.button("Show Prediction Samples"):
-        results_df = pd.DataFrame({"Actual": y_test.values[:10], "Predicted": y_pred[:10]})
-        st.write(results_df)
-else:
-    st.info("Awaiting CSV file upload.")
