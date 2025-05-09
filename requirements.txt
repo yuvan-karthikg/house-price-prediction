@@ -1,1 +1,6 @@
-pip install streamlit tensorflow scikit-learn pandas joblib
+streamlit
+tensorflow
+scikit-learn
+pandas
+joblib
+numpy
