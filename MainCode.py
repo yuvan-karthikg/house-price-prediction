@@ -7,7 +7,6 @@ from sklearn.metrics import mean_squared_error, r2_score
 import tensorflow as tf
 import matplotlib.pyplot as plt
 import seaborn as sns
-from keras import backend as K
 
 # --- Load Data ---
 @st.cache_data
@@ -53,9 +52,9 @@ st.header("Model Training")
 
 # Define a custom R-squared metric for Keras
 def r2_keras(y_true, y_pred):
-    SS_res = K.sum(K.square(y_true - y_pred))
-    SS_tot = K.sum(K.square(y_true - K.mean(y_true)))
-    return (1 - SS_res / (SS_tot + K.epsilon()))
+    SS_res = tf.reduce_sum(tf.square(y_true - y_pred))
+    SS_tot = tf.reduce_sum(tf.square(y_true - tf.reduce_mean(y_true)))
+    return (1 - SS_res / (SS_tot + tf.keras.backend.epsilon()))
 
 # Build improved model with the custom R-squared metric
 def build_improved_model(input_dim):
