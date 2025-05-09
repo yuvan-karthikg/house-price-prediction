@@ -18,7 +18,7 @@ if uploaded_file is not None:
     if 'date' in df.columns:
         df = df.drop(columns=['date'])
 
-    # Fill missing values with median for numeric, mode for object
+    # Fill missing values: median for numeric, mode for categorical
     for col in df.columns:
         if df[col].dtype in ['float64', 'int64']:
             df[col] = df[col].fillna(df[col].median())
@@ -39,7 +39,7 @@ if uploaded_file is not None:
     numeric_cols = X_raw.select_dtypes(include=[np.number]).columns.tolist()
 
     # One-hot encode categorical features
-    encoder = OneHotEncoder(sparse=False, handle_unknown='ignore')
+    encoder = OneHotEncoder(sparse_output=False, handle_unknown='ignore')
     if categorical_cols:
         X_cat = pd.DataFrame(
             encoder.fit_transform(X_raw[categorical_cols]),
