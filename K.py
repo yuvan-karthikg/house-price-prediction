@@ -12,7 +12,7 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error
 
 # Streamlit UI
 st.title("🏠 House Price Prediction using ANN")
-st.write("Upload your dataset to begin:")
+st.write("Upload your dataset with the following columns: date, price, bedrooms, bathrooms, sqft_living, sqft_lot, floors, waterfront, view, condition, sqft_above, sqft_basement, yr_built, yr_renovated, street, city, statezip, country")
 
 uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
 
@@ -24,15 +24,18 @@ if uploaded_file is not None:
     st.subheader("Data Description")
     st.write(df.describe())
 
-    # Preprocessing
-    st.subheader("Preprocessing Data")
+    # Drop rows with missing values
     df = df.dropna()
-    X = df.drop(columns=["price"], errors='ignore')
-    y = df["price"] if "price" in df.columns else df.iloc[:, -1]  # fallback
 
+    # Extract features and target
+    y = df["price"]
+    X = df.drop(columns=["price", "date", "street", "statezip", "country"], errors='ignore')
+
+    # Identify categorical and numerical columns
     cat_cols = X.select_dtypes(include=["object", "category"]).columns.tolist()
     num_cols = X.select_dtypes(include=[np.number]).columns.tolist()
 
+    # Preprocessing pipeline
     preprocessor = ColumnTransformer([
         ("num", MinMaxScaler(), num_cols),
         ("cat", OneHotEncoder(handle_unknown="ignore"), cat_cols)
