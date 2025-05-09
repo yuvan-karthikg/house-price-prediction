@@ -16,7 +16,8 @@ SCALER_PATH = 'scaler.pkl'
 ENCODER_PATH = 'encoder.pkl'
 DATA_PATH = 'housing_3.csv'
 
-CATEGORICAL = ['mainroad', 'guestroom', 'basement', 'hotwaterheating', 'airconditioning', 'prefarea', 'furnishingstatus']
+CATEGORICAL = ['mainroad', 'guestroom', 'basement', 'hotwaterheating',
+               'airconditioning', 'prefarea', 'furnishingstatus']
 NUMERICAL = ['area', 'bedrooms', 'bathrooms', 'stories', 'parking']
 TARGET = 'price'
 
@@ -37,7 +38,7 @@ def preprocess(df, fit=False, scaler=None, encoder=None):
     return X_processed, scaler, encoder
 
 def remove_outliers(df):
-    # Remove outliers in price and area (simple IQR method)
+    # Simple IQR method for price and area
     for col in ['price', 'area']:
         q1 = df[col].quantile(0.25)
         q3 = df[col].quantile(0.75)
@@ -65,8 +66,7 @@ def load_data():
 def train_and_save_model(df):
     X = df[NUMERICAL + CATEGORICAL]
     y = df[TARGET]
-    # Log-transform the target to reduce skew
-    y_log = np.log1p(y)
+    y_log = np.log1p(y)  # Log-transform target
     X_processed, scaler, encoder = preprocess(X, fit=True)
     X_train, X_test, y_train, y_test = train_test_split(X_processed, y_log, test_size=0.2, random_state=42)
     model = Sequential([
@@ -84,9 +84,18 @@ def train_and_save_model(df):
     y_pred_log = model.predict(X_test).flatten()
     y_pred = np.expm1(y_pred_log)
     y_test_orig = np.expm1(y_test)
+
+    # Check for NaNs/Infs before evaluation
+    if np.any(np.isnan(y_pred)) or np.any(np.isinf(y_pred)):
+        st.error("Model predictions contain NaN or infinite values. Please check your model or data.")
+        st.stop()
+    if np.any(np.isnan(y_test_orig)) or np.any(np.isinf(y_test_orig)):
+        st.error("Test target contains NaN or infinite values. Please check your dataset.")
+        st.stop()
+
     r2 = r2_score(y_test_orig, y_pred)
     if r2 > 0.7:
-        # retrain with less capacity
+        # Retrain with smaller model if R² too high
         model = Sequential([
             Dense(32, input_dim=X_train.shape[1], activation='relu'),
             Dropout(0.2),
@@ -97,6 +106,7 @@ def train_and_save_model(df):
         y_pred_log = model.predict(X_test).flatten()
         y_pred = np.expm1(y_pred_log)
         r2 = r2_score(y_test_orig, y_pred)
+
     model.save(MODEL_PATH)
     joblib.dump(scaler, SCALER_PATH)
     joblib.dump(encoder, ENCODER_PATH)
@@ -111,6 +121,15 @@ def load_model_and_preprocessors():
 def show_metrics(y_test, y_pred, y_test_orig=None):
     if y_test_orig is None:
         y_test_orig = y_test
+
+    # Check for NaN/Inf before metrics
+    if np.any(np.isnan(y_pred)) or np.any(np.isinf(y_pred)):
+        st.error("Predictions contain NaN or infinite values. Cannot compute metrics.")
+        st.stop()
+    if np.any(np.isnan(y_test_orig)) or np.any(np.isinf(y_test_orig)):
+        st.error("Test data contains NaN or infinite values. Cannot compute metrics.")
+        st.stop()
+
     r2 = r2_score(y_test_orig, y_pred)
     mae = mean_absolute_error(y_test_orig, y_pred)
     rmse = np.sqrt(mean_squared_error(y_test_orig, y_pred))
@@ -119,13 +138,13 @@ def show_metrics(y_test, y_pred, y_test_orig=None):
     st.write(f"**Mean Absolute Error (MAE):** ${mae:,.2f}")
     st.write(f"**Root Mean Squared Error (RMSE):** ${rmse:,.2f}")
     st.write(f"**Test Samples:** {len(y_test_orig)}")
-    # Scatter plot
-    st.subheader("Predicted vs Actual Prices")
+
     chart_df = pd.DataFrame({'Actual': y_test_orig, 'Predicted': y_pred})
+    st.subheader("Predicted vs Actual Prices")
     st.scatter_chart(chart_df)
 
 def main():
-    st.title("Efficient House Price Prediction (ANN) - Custom Housing Dataset")
+    st.title("Efficient House Price Prediction (ANN)")
 
     if not os.path.exists(MODEL_PATH) or not os.path.exists(SCALER_PATH) or not os.path.exists(ENCODER_PATH):
         st.info("Training model, please wait...")
@@ -182,4 +201,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
