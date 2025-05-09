@@ -14,7 +14,7 @@ from tensorflow.keras.callbacks import EarlyStopping
 MODEL_PATH = 'model.keras'
 SCALER_PATH = 'scaler.pkl'
 ENCODER_PATH = 'encoder.pkl'
-DATA_PATH = 'housing_3.csv' 
+DATA_PATH = 'housing_3.csv'  # Updated filename
 
 CATEGORICAL = ['mainroad', 'guestroom', 'basement', 'hotwaterheating', 'airconditioning', 'prefarea', 'furnishingstatus']
 NUMERICAL = ['area', 'bedrooms', 'bathrooms', 'stories', 'parking']
@@ -91,7 +91,8 @@ def load_model_and_preprocessors():
 def show_metrics(y_test, y_pred):
     r2 = r2_score(y_test, y_pred)
     mae = mean_absolute_error(y_test, y_pred)
-    rmse = mean_squared_error(y_test, y_pred, squared=False)
+    # Compute RMSE manually for compatibility
+    rmse = np.sqrt(mean_squared_error(y_test, y_pred))
     st.subheader("Model Evaluation Metrics")
     st.write(f"**R² Score:** {r2:.3f}")
     st.write(f"**Mean Absolute Error (MAE):** ${mae:,.2f}")
