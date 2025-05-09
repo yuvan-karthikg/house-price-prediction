@@ -3,9 +3,10 @@ import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
-from tensorflow import keras
+from sklearn.metrics import mean_absolute_error, r2_score
+import xgboost as xgb
 
-st.title("House Price Prediction using Neural Networks")
+st.title("House Price Prediction using XGBoost (Best Practice)")
 
 uploaded_file = st.file_uploader("Upload your CSV file", type=["csv"])
 if uploaded_file is not None:
@@ -52,26 +53,19 @@ if uploaded_file is not None:
     # Fill again in case encoding introduces NaNs
     X = X.fillna(0)
 
-    # Split and scale
+    # Split
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42
     )
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
 
+    # XGBoost Model
     @st.cache_resource
-    def train_model(X_train_scaled, y_train):
-        model = keras.Sequential([
-            keras.layers.Dense(64, activation='relu', input_shape=(X_train_scaled.shape[1],)),
-            keras.layers.Dense(32, activation='relu'),
-            keras.layers.Dense(1)
-        ])
-        model.compile(optimizer='adam', loss='mse', metrics=['mae'])
-        model.fit(X_train_scaled, y_train, epochs=100, batch_size=32, verbose=0)
+    def train_model(X_train, y_train):
+        model = xgb.XGBRegressor(n_estimators=500, learning_rate=0.05, max_depth=6, random_state=42)
+        model.fit(X_train, y_train)
         return model
 
-    model = train_model(X_train_scaled, y_train)
+    model = train_model(X_train, y_train)
 
     st.header("Predict the Price of a House")
 
@@ -112,16 +106,12 @@ if uploaded_file is not None:
             input_X[col] = 0
     input_X = input_X[X.columns.tolist()]
 
-    # Scale
-    input_scaled = scaler.transform(input_X)
-
     if st.button('Predict Price'):
-        prediction = model.predict(input_scaled)
-        st.success(f"Estimated House Price: ${prediction[0][0]:,.2f}")
+        prediction = model.predict(input_X)
+        st.success(f"Estimated House Price: ${prediction[0]:,.2f}")
 
     if st.checkbox('Show Model Performance on Test Data'):
-        test_preds = model.predict(X_test_scaled)
-        from sklearn.metrics import mean_absolute_error, r2_score
+        test_preds = model.predict(X_test)
         mae = mean_absolute_error(y_test, test_preds)
         r2 = r2_score(y_test, test_preds)
         st.write(f"Test MAE: ${mae:,.2f}")
@@ -129,3 +119,4 @@ if uploaded_file is not None:
 
 else:
     st.info("Please upload a CSV file to use the app.")
+
