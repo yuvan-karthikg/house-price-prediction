@@ -7,6 +7,7 @@ from sklearn.metrics import mean_squared_error, r2_score
 import tensorflow as tf
 import matplotlib.pyplot as plt
 import seaborn as sns
+from keras import backend as K
 
 # --- Load Data ---
 @st.cache_data
@@ -50,24 +51,13 @@ X_test_scaled = scaler.transform(X_test)
 # --- Neural Network Model ---
 st.header("Model Training")
 
-# Build model
-def build_model(input_dim):
-    model = tf.keras.Sequential([
-        tf.keras.layers.Dense(128, activation='relu', input_dim=input_dim),
-        tf.keras.layers.Dense(64, activation='relu'),
-        tf.keras.layers.Dense(32, activation='relu'),
-        tf.keras.layers.Dense(1)
-    ])
-    model.compile(optimizer='adam', loss='mse', metrics=['mae', 'mse', 'R2']) # Added R2 metric
-    return model
-
 # Define a custom R-squared metric for Keras
 def r2_keras(y_true, y_pred):
-    SS_res = tf.reduce_sum(tf.square(y_true - y_pred))
-    SS_tot = tf.reduce_sum(tf.square(y_true - tf.reduce_mean(y_true)))
-    return (1 - SS_res/(SS_tot + tf.keras.backend.epsilon()))
+    SS_res = K.sum(K.square(y_true - y_pred))
+    SS_tot = K.sum(K.square(y_true - K.mean(y_true)))
+    return (1 - SS_res/(SS_tot + K.epsilon()))
 
-# Rebuild the model with the custom R-squared metric
+# Build improved model with the custom R-squared metric
 def build_improved_model(input_dim):
     model = tf.keras.Sequential([
         tf.keras.layers.Dense(128, activation='relu', input_dim=input_dim),
