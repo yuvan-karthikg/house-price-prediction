@@ -1,5 +1,5 @@
 HOUSE PRICE PREDICTION
-House Price Prediction using Neural Networks
+using Neural Networks
 
 OVERVIEW:
 
